@@ -1,9 +1,7 @@
 {
-  "id": "gael-nuvio-repo",
-  "name": "Gael Nuvio Providers",
-  "description": "Scrapers de Gael1303 portados do CineRoom Burst",
+  "name": "gael-nuvio-repo",
   "version": "1.0.0",
-  "providers": [
+  "scrapers": [
     {
       "id": "animezey",
       "name": "AnimeZey",
