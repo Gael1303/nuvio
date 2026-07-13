@@ -1,14 +1,20 @@
-[
-  {
-    "id": "animezey",
-    "name": "AnimeZey",
-    "description": "Scraper de filmes portado do CineRoom Burst",
-    "version": "1.0.0",
-    "author": "Gael1303",
-    "supportedTypes": ["movie"],
-    "filename": "providers/animezey-movies.js",
-    "enabled": true,
-    "formats": ["mkv", "mp4"],
-    "contentLanguage": ["pt-BR"]
-  }
-]
+{
+  "id": "gael-nuvio-repo",
+  "name": "Gael Nuvio Providers",
+  "description": "Scrapers de Gael1303 portados do CineRoom Burst",
+  "version": "1.0.0",
+  "providers": [
+    {
+      "id": "animezey",
+      "name": "AnimeZey",
+      "description": "Scraper de filmes portado do CineRoom Burst",
+      "version": "1.0.0",
+      "author": "Gael1303",
+      "supportedTypes": ["movie"],
+      "filename": "providers/animezey-movies.js",
+      "enabled": true,
+      "formats": ["mkv", "mp4"],
+      "contentLanguage": ["pt-BR"]
+    }
+  ]
+}
