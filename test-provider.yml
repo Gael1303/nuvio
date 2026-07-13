@@ -1,0 +1,28 @@
+name: Testar AnimeZey Provider
+
+# Roda automaticamente a cada push, e também pode ser disparado manualmente
+# pela aba "Actions" do GitHub (botão "Run workflow") direto do celular.
+on:
+  push:
+    paths:
+      - 'animezey-movies.js'
+      - 'test.js'
+  workflow_dispatch:
+    inputs:
+      tmdb_id:
+        description: 'TMDB ID do filme para testar'
+        required: false
+        default: '299534'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Rodar teste do provider
+        run: node test.js ${{ github.event.inputs.tmdb_id || '299534' }}
