@@ -4,7 +4,7 @@
  * pelo sandbox Hermes do app (async/await não é executável nos plugins).
  */
 
-const DEBUG = false;
+const DEBUG = true;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[animezey]'].concat(Array.prototype.slice.call(arguments)));
 };
@@ -17,7 +17,7 @@ const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-const TMDB_API_KEY = 'f0b9cd2de131c900f5bb03a0a5776342';
+const TMDB_API_KEY = 'COLE_SUA_CHAVE_TMDB_AQUI';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 // ---------------------------------------------------------------------------
@@ -193,9 +193,13 @@ AnimeZeyMovieScraper.prototype._searchMovies = function () {
   const queries = this._generateMovieQueries().slice(0, 8);
   const searchUrl = 'https://' + this.baseDomain + '/1:search';
 
+  log('[_searchMovies] ' + queries.length + ' queries geradas: ' + JSON.stringify(queries));
+
   function processQuery(query) {
     if (movies.length >= MAX_RESULTS) return Promise.resolve();
     return postToAnimezey(searchUrl, { q: query }).then(function (result) {
+      const fileCount = result && result.data && result.data.files ? result.data.files.length : 0;
+      log('[_searchMovies] query="' + query + '" -> ' + fileCount + ' arquivo(s) na resposta');
       if (!result || !result.data || !result.data.files) return;
       const files = result.data.files;
       for (let i = 0; i < files.length; i++) {
@@ -204,7 +208,10 @@ AnimeZeyMovieScraper.prototype._searchMovies = function () {
         const itemId = item.id;
         if (seenIds.has(itemId)) continue;
         seenIds.add(itemId);
-        if (self._isVideoFile(item) && self._isCorrectMovie(item.name || '')) {
+        const isVideo = self._isVideoFile(item);
+        const isCorrect = self._isCorrectMovie(item.name || '');
+        log('[_searchMovies] candidato: "' + item.name + '" isVideo=' + isVideo + ' isCorrect=' + isCorrect);
+        if (isVideo && isCorrect) {
           movies.push(item);
         }
       }
@@ -214,6 +221,7 @@ AnimeZeyMovieScraper.prototype._searchMovies = function () {
   return queries.reduce(function (p, query) {
     return p.then(function () { return processQuery(query); });
   }, Promise.resolve()).then(function () {
+    log('[_searchMovies] total de filmes casados: ' + movies.length);
     return movies.length ? self._processResults(movies) : [];
   });
 };
@@ -440,10 +448,15 @@ AnimeZeyMovieScraper.prototype._createResultItem = function (fileData, downloadU
 
 function getStreams(tmdbId, mediaType, providerUrl) {
   providerUrl = providerUrl || 'https://1.animezey23112022.workers.dev';
+  log('[getStreams] chamado com tmdbId=' + tmdbId + ' mediaType=' + mediaType);
 
-  if (mediaType !== 'movie') return Promise.resolve([]);
+  if (mediaType !== 'movie') {
+    log('[getStreams] mediaType != movie, retornando vazio');
+    return Promise.resolve([]);
+  }
 
   return fetchTmdbMovie(tmdbId).then(function (details) {
+    log('[getStreams] TMDB OK: title=' + details.title + ' original=' + details.original_title);
     const dateStr = details.release_date || '';
     const itemData = {
       title: details.title,
@@ -451,10 +464,24 @@ function getStreams(tmdbId, mediaType, providerUrl) {
       year: dateStr ? parseInt(dateStr.slice(0, 4), 10) : null,
     };
     const scraper = new AnimeZeyMovieScraper(providerUrl, itemData);
-    return scraper.scrape();
+    return scraper.scrape().then(function (results) {
+      log('[getStreams] scrape() retornou ' + results.length + ' resultado(s)');
+      return results;
+    });
   }).catch(function (e) {
     log('[getStreams] ❌ Erro:', e.message);
-    return [];
+    // DEBUG: devolve o erro como um "stream" falso e visível na lista de
+    // resultados do app, útil quando não há aba de Logs separada.
+    // Remover este bloco depois de resolver o problema.
+    return [{
+      name: 'AnimeZey [ERRO]',
+      title: 'DEBUG: ' + e.message,
+      url: 'https://example.com/erro-debug',
+      quality: 0,
+      group: 'DEBUG',
+      provider: 'AnimeZey',
+      headers: {},
+    }];
   });
 }
 
