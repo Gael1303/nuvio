@@ -12,6 +12,7 @@
       "filename": "providers/animezey-movies.js",
       "enabled": true,
       "formats": ["mkv", "mp4"],
+      "logo": "https://i.postimg.cc/mgztMh3f/FB-IMG-1784290974562.jpg",
       "contentLanguage": ["pt-BR"]
     }
   ]
