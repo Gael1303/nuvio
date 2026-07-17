@@ -17,7 +17,7 @@ const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-const TMDB_API_KEY = '70533e9a93ad18166cb20a576dc62607';
+const TMDB_API_KEY = 'COLE_SUA_CHAVE_TMDB_AQUI';
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 
 // ---------------------------------------------------------------------------
@@ -35,15 +35,23 @@ function normalizeForCompare(text) {
 }
 
 function guessQualityFromName(name) {
-  // Número (1080, 720...), não string — confirmado no fshd.js real.
-  if (!name) return 480;
+  // String minúscula (ex: '1080p'), seguindo a convenção confirmada no
+  // DahmerMovies real (quality.toLowerCase()) — número causava o
+  // sufixo estranho "- 2160.0" no app.
+  if (!name) return '480p';
   const n = name.toLowerCase();
-  if (n.includes('2160p') || n.includes('4k') || n.includes('uhd')) return 2160;
-  if (n.includes('1080p') || n.includes('fullhd') || n.includes('full hd')) return 1080;
-  if (n.includes('720p')) return 720;
-  if (['hdtv', 'webdl', 'web-dl', 'webrip', 'hdrip', 'bluray', 'bdrip'].some(function (t) { return n.includes(t); })) return 720;
-  if (['dvdrip', 'sd', '480p', 'tvrip'].some(function (t) { return n.includes(t); })) return 480;
-  return 720;
+  if (n.includes('2160p') || n.includes('4k') || n.includes('uhd')) return '2160p';
+  if (n.includes('1080p') || n.includes('fullhd') || n.includes('full hd')) return '1080p';
+  if (n.includes('720p')) return '720p';
+  if (['hdtv', 'webdl', 'web-dl', 'webrip', 'hdrip', 'bluray', 'bdrip'].some(function (t) { return n.includes(t); })) return '720p';
+  if (['dvdrip', 'sd', '480p', 'tvrip'].some(function (t) { return n.includes(t); })) return '480p';
+  return '720p';
+}
+
+function qualityRank(q) {
+  // Auxiliar só pra ordenação interna — o campo enviado continua string.
+  const n = parseInt(q, 10);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function formatSize(sizeBytes) {
@@ -669,7 +677,7 @@ AnimeZeyScraper.prototype._processResults = function (items) {
   return items.reduce(function (p, item) {
     return p.then(function () { return processItem(item); });
   }, Promise.resolve()).then(function () {
-    results.sort(function (a, b) { return b.quality - a.quality; });
+    results.sort(function (a, b) { return qualityRank(b.quality) - qualityRank(a.quality); });
     return results;
   });
 };
@@ -748,7 +756,7 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
     language = 'PT-BR'; languageLabel = 'Português';
   }
 
-  const qualityLabel = quality >= 2160 ? '4K' : quality + 'p';
+  const qualityLabel = quality === '2160p' ? '4K' : quality;
   const displayTitle = this.mediaType === 'tvshow'
     ? this.title + ' S' + pad(this.season, 2) + 'E' + pad(this.episode, 2)
     : this.title;
@@ -840,4 +848,4 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = { getStreams: getStreams };
 } else {
   global.getStreams = getStreams;
-  }
+}
