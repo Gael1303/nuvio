@@ -201,6 +201,7 @@ function computeAbsoluteEpisode(seasons, season, episode) {
 
 function AnimeZeyScraper(providerUrl, itemData) {
   this.providerUrl = providerUrl;
+  this.tmdbId = itemData.tmdb_id;
   this.title = (itemData.title || '').trim();
   this.originalTitle = (itemData.original_title || '').trim();
   this.romajiTitle = (itemData.romaji_title || '').trim();
@@ -736,19 +737,40 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
   const fnLower = fileName.toLowerCase();
 
   let language;
-  if (['dual', 'multi'].some(function (x) { return fnLower.includes(x); })) language = 'DUAL';
-  else if (['dublado', 'dub ', 'pt-br'].some(function (x) { return fnLower.includes(x); })) language = 'PT-BR';
-  else if (['legendado', 'leg', 'sub', 'eng'].some(function (x) { return fnLower.includes(x); })) language = 'LEG';
-  else language = 'PT-BR';
+  let languageLabel;
+  if (['dual', 'multi'].some(function (x) { return fnLower.includes(x); })) {
+    language = 'DUAL'; languageLabel = 'Português e Inglês';
+  } else if (['dublado', 'dub ', 'pt-br'].some(function (x) { return fnLower.includes(x); })) {
+    language = 'PT-BR'; languageLabel = 'Português';
+  } else if (['legendado', 'leg', 'sub', 'eng'].some(function (x) { return fnLower.includes(x); })) {
+    language = 'LEG'; languageLabel = 'Português (Legendado)';
+  } else {
+    language = 'PT-BR'; languageLabel = 'Português';
+  }
+
+  const qualityLabel = quality >= 2160 ? '4K' : quality + 'p';
+  const displayTitle = this.mediaType === 'tvshow'
+    ? this.title + ' S' + pad(this.season, 2) + 'E' + pad(this.episode, 2)
+    : this.title;
+
+  const bingeGroup = this.mediaType === 'tvshow'
+    ? 'animezey-tv-' + this.tmdbId
+    : 'animezey-movie-' + this.tmdbId;
 
   return {
-    name: 'AnimeZey ' + language + ' ' + quality + 'p',
-    title: fileName,
+    // Estilo FrostStream: 'name' é o rótulo curto (provedor + qualidade),
+    // 'title' é o detalhe multi-linha exibido na lista (título, fonte, idioma).
+    name: 'AnimeZey ' + qualityLabel,
+    title: '🎬 ' + displayTitle + '\n📦 AnimeZey\n🌎 ' + languageLabel,
     url: downloadUrl,
     quality: quality,
     group: language,
     provider: 'AnimeZey',
     headers: { 'User-Agent': USER_AGENT, Referer: 'https://' + this.baseDomain + '/' },
+    behaviorHints: {
+      notWebReady: true,
+      bingeGroup: bingeGroup,
+    },
     size: formatSize(fileData.size || 0),
   };
 };
@@ -792,6 +814,7 @@ function getStreams(tmdbId, mediaType, season, episode, providerUrl) {
       log('[getStreams] TMDB OK: title="' + title + '" original="' + originalTitle + '" year=' + year);
 
       const itemData = {
+        tmdb_id: tmdbId,
         title: title,
         original_title: originalTitle,
         romaji_title: '',
