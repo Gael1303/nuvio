@@ -96,39 +96,24 @@ const NOISE_WORD_RE = new RegExp(
 // HTTP — 100% Promise-chain, sem await
 // ---------------------------------------------------------------------------
 
-function fetchWithTimeout(url, options, timeoutMs) {
-  options = options || {};
-  // AbortController pode não existir em sandboxes JS mais restritos —
-  // se não existir, faz o fetch normal sem timeout/cancelamento em vez
-  // de quebrar com ReferenceError.
-  if (typeof AbortController === 'undefined') {
-    return fetch(url, options);
-  }
-  timeoutMs = timeoutMs || REQUEST_TIMEOUT_MS;
-  const controller = new AbortController();
-  const id = setTimeout(function () { controller.abort(); }, timeoutMs);
-
-  const opts = Object.assign({}, options, { signal: controller.signal });
-
-  return fetch(url, opts).then(
-    function (res) { clearTimeout(id); return res; },
-    function (err) { clearTimeout(id); throw err; }
-  );
+function fetchWithTimeout(url, options) {
+  // Sandbox confirmado sem setTimeout/AbortController — sem eles não dá
+  // pra implementar timeout manual, então só faz o fetch puro. As chamadas
+  // de rede simplesmente resolvem ou rejeitam pelo comportamento normal
+  // do fetch, sem cancelamento por tempo.
+  return fetch(url, options || {});
 }
 
-function withRetry(fn, maxRetries, delayMs, attempt) {
+function withRetry(fn, maxRetries, attempt) {
   maxRetries = maxRetries || MAX_RETRIES;
-  delayMs = delayMs || 1000;
   attempt = attempt || 0;
 
   return fn().catch(function (e) {
     const isRetryable = e.name === 'AbortError' || e.name === 'TypeError';
     if (attempt >= maxRetries - 1 || !isRetryable) throw e;
-    return new Promise(function (resolve) {
-      setTimeout(resolve, delayMs * (attempt + 1));
-    }).then(function () {
-      return withRetry(fn, maxRetries, delayMs, attempt + 1);
-    });
+    // Sem setTimeout disponível não dá pra esperar entre tentativas —
+    // tenta de novo imediatamente.
+    return withRetry(fn, maxRetries, attempt + 1);
   });
 }
 
