@@ -4,7 +4,7 @@
  * AbortController (sandbox confirmado sem essas APIs).
  */
 
-const DEBUG = true;
+const DEBUG = false;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[animezey]'].concat(Array.prototype.slice.call(arguments)));
 };
@@ -768,8 +768,7 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
   return {
     // Estilo FrostStream: 'name' é o rótulo curto (provedor + qualidade),
     // 'title' é o detalhe multi-linha exibido na lista (título, fonte, idioma).
-    name: 'AnimeZey ' + qualityLabel,
-    title: '🎬 ' + displayTitle + '\n📦 AnimeZey\n🌎 ' + languageLabel,
+    title: + displayTitle + '\n AnimeZey\n ' + languageLabel,
     url: downloadUrl,
     quality: quality,
     group: language,
