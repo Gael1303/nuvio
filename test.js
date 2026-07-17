@@ -1,15 +1,13 @@
-// Teste rápido do provider. Roda com: node test.js
-// Exemplo usa o tmdbId do filme "Vingadores: Ultimato" (299534).
-import { getStreams } from './animezey-movies.js';
+const { getStreams } = require('./animezey-full.js');
 
-const TMDB_ID = process.argv[2] || '299534';
-
-getStreams(TMDB_ID, 'movie')
-  .then((streams) => {
-    console.log(`\n✅ ${streams.length} resultado(s) encontrado(s):\n`);
-    console.log(JSON.stringify(streams, null, 2));
-  })
-  .catch((err) => {
-    console.error('❌ Erro no teste:', err);
-    process.exit(1);
-  });
+console.log('--- Teste filme ---');
+getStreams('615457', 'movie', null, null).then(function(streams) {
+  console.log(JSON.stringify(streams, null, 2));
+}).then(function() {
+  console.log('--- Teste série ---');
+  return getStreams('1396', 'tv', 1, 1); // Breaking Bad S1E1
+}).then(function(streams) {
+  console.log(JSON.stringify(streams, null, 2));
+}).catch(function(err) {
+  console.error('❌ Erro:', err);
+});
