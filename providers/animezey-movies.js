@@ -766,9 +766,9 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
     : 'animezey-movie-' + this.tmdbId;
 
   return {
-      title: languageLabel,
       url: downloadUrl,
       quality: quality,
+      language: languageLabel,
       group: language,
       provider: 'Animezey',
       headers: {
