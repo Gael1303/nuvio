@@ -1,4 +1,4 @@
-const { getStreams } = require('./animezey-full.js');
+const { getStreams } = require('./animezey-movies.js');
 
 console.log('--- Teste filme ---');
 getStreams('615457', 'movie', null, null).then(function(streams) {
