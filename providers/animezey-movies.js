@@ -760,8 +760,8 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
   return {
     // Estilo FrostStream: 'name' é o rótulo curto (provedor + qualidade),
     // 'title' é o detalhe multi-linha exibido na lista (título, fonte, idioma).
-    name: 'AnimeZey '\n + qualityLabel,
-    title: '🎬 ' + displayTitle + '\n🌎 ' + languageLabel,
+    name: 'AnimeZey ' + qualityLabel,
+    title: '🎬 ' + displayTitle + '\n📦 AnimeZey\n🌎 ' + languageLabel,
     url: downloadUrl,
     quality: quality,
     group: language,
