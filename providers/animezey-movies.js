@@ -766,20 +766,22 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
     : 'animezey-movie-' + this.tmdbId;
 
   return {
-    // Estilo FrostStream: 'name' é o rótulo curto (provedor + qualidade),
-    // 'title' é o detalhe multi-linha exibido na lista (título, fonte, idioma).
-    title: qualityLabel\n + '📦AnimeZey\n' + '🌎'languageLabel,
-    url: downloadUrl,
-    quality: quality,
-    group: language,
-    provider: 'AnimeZey',
-    headers: { 'User-Agent': USER_AGENT, Referer: 'https://' + this.baseDomain + '/' },
-    behaviorHints: {
-      notWebReady: true,
-      bingeGroup: bingeGroup,
-    },
-    size: formatSize(fileData.size || 0),
-  };
+      name: qualityLabel,
+      title: displayTitle + '\n📦 AnimeZey\n🌎 ' + languageLabel,
+      url: downloadUrl,
+      quality: quality,
+      group: language,
+      provider: 'AnimeZey',
+      headers: {
+        'User-Agent': USER_AGENT,
+        Referer: 'https://' + this.baseDomain + '/',
+      },
+      behaviorHints: {
+        notWebReady: true,
+        bingeGroup: bingeGroup,
+      },
+      size: formatSize(fileData.size || 0),
+    };
 };
 
 // ---------------------------------------------------------------------------
