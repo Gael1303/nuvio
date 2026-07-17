@@ -98,6 +98,12 @@ const NOISE_WORD_RE = new RegExp(
 
 function fetchWithTimeout(url, options, timeoutMs) {
   options = options || {};
+  // AbortController pode não existir em sandboxes JS mais restritos —
+  // se não existir, faz o fetch normal sem timeout/cancelamento em vez
+  // de quebrar com ReferenceError.
+  if (typeof AbortController === 'undefined') {
+    return fetch(url, options);
+  }
   timeoutMs = timeoutMs || REQUEST_TIMEOUT_MS;
   const controller = new AbortController();
   const id = setTimeout(function () { controller.abort(); }, timeoutMs);
@@ -447,42 +453,48 @@ AnimeZeyMovieScraper.prototype._createResultItem = function (fileData, downloadU
 // ---------------------------------------------------------------------------
 
 function getStreams(tmdbId, mediaType, providerUrl) {
-  providerUrl = providerUrl || 'https://1.animezey23112022.workers.dev';
-  log('[getStreams] chamado com tmdbId=' + tmdbId + ' mediaType=' + mediaType);
-
-  if (mediaType !== 'movie') {
-    log('[getStreams] mediaType != movie, retornando vazio');
-    return Promise.resolve([]);
-  }
-
-  return fetchTmdbMovie(tmdbId).then(function (details) {
-    log('[getStreams] TMDB OK: title=' + details.title + ' original=' + details.original_title);
-    const dateStr = details.release_date || '';
-    const itemData = {
-      title: details.title,
-      original_title: details.original_title,
-      year: dateStr ? parseInt(dateStr.slice(0, 4), 10) : null,
-    };
-    const scraper = new AnimeZeyMovieScraper(providerUrl, itemData);
-    return scraper.scrape().then(function (results) {
-      log('[getStreams] scrape() retornou ' + results.length + ' resultado(s)');
-      return results;
-    });
-  }).catch(function (e) {
-    log('[getStreams] ❌ Erro:', e.message);
-    // DEBUG: devolve o erro como um "stream" falso e visível na lista de
-    // resultados do app, útil quando não há aba de Logs separada.
-    // Remover este bloco depois de resolver o problema.
+  function debugError(e) {
+    const msg = (e && e.message) ? e.message : String(e);
+    log('[getStreams] ❌ Erro:', msg);
     return [{
       name: 'AnimeZey [ERRO]',
-      title: 'DEBUG: ' + e.message,
+      title: 'DEBUG: ' + msg,
       url: 'https://example.com/erro-debug',
       quality: 0,
       group: 'DEBUG',
       provider: 'AnimeZey',
       headers: {},
     }];
-  });
+  }
+
+  try {
+    providerUrl = providerUrl || 'https://1.animezey23112022.workers.dev';
+    log('[getStreams] chamado com tmdbId=' + tmdbId + ' mediaType=' + mediaType);
+
+    if (mediaType !== 'movie') {
+      log('[getStreams] mediaType != movie, retornando vazio');
+      return Promise.resolve([]);
+    }
+
+    return fetchTmdbMovie(tmdbId).then(function (details) {
+      log('[getStreams] TMDB OK: title=' + details.title + ' original=' + details.original_title);
+      const dateStr = details.release_date || '';
+      const itemData = {
+        title: details.title,
+        original_title: details.original_title,
+        year: dateStr ? parseInt(dateStr.slice(0, 4), 10) : null,
+      };
+      const scraper = new AnimeZeyMovieScraper(providerUrl, itemData);
+      return scraper.scrape().then(function (results) {
+        log('[getStreams] scrape() retornou ' + results.length + ' resultado(s)');
+        return results;
+      });
+    }).catch(debugError);
+  } catch (e) {
+    // Captura qualquer erro SÍNCRONO (ex: API ausente no sandbox) que
+    // aconteceria antes mesmo de existir uma Promise pra encadear .catch.
+    return Promise.resolve(debugError(e));
+  }
 }
 
 // Export CommonJS (formato exigido pelo Nuvio)
