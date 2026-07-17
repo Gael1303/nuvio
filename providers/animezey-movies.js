@@ -766,11 +766,11 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
     : 'animezey-movie-' + this.tmdbId;
 
   return {
-      title: displayTitle + '\nAnimeZey\n' + languageLabel,
+      title: provider + languageLabel,
       url: downloadUrl,
       quality: quality,
       group: language,
-      provider: 'AnimeZey',
+      provider: 'Animezey',
       headers: {
         'User-Agent': USER_AGENT,
         Referer: 'https://' + this.baseDomain + '/',
