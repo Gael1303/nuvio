@@ -767,7 +767,7 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
 
   return {
       name: qualityLabel,
-      title: displayTitle + '\n📦 AnimeZey\n🌎 ' + languageLabel,
+      title: displayTitle + '\nAnimeZey\n' + languageLabel,
       url: downloadUrl,
       quality: quality,
       group: language,
