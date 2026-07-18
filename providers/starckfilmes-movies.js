@@ -4,7 +4,7 @@
  * há parser de DOM disponível — mais frágil que o AnimeZey (que era JSON puro).
  */
 
-const DEBUG = true;
+const DEBUG = false;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[starck]'].concat(Array.prototype.slice.call(arguments)));
 };
@@ -254,9 +254,44 @@ function parseBtnDown(block, qualidadeFallback, tamanhoFallback) {
   return { url: magnet, idioma: idioma, qualidade: qualidade, tamanho: tamanho };
 }
 
-// ---------------------------------------------------------------------------
-// Busca no site
-// ---------------------------------------------------------------------------
+// Div "epsodios" (Caso A) — melhor esforço, assume que não há outra <div>
+// aninhada antes do fechamento real.
+function getEpisodiosDiv(html) {
+  const m = html.match(/<div[^>]*class=["'][^"']*\bepsodios\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
+  if (m) return m[1];
+  const m2 = html.match(/<div[^>]*class=["'][^"']*\bepsodios\b[^"']*["'][^>]*>([\s\S]*?)<\/div>/i);
+  return m2 ? m2[1] : null;
+}
+
+function getH3Text(block) {
+  const m = block.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i);
+  return m ? stripTags(m[1]) : '';
+}
+
+function getPBlocksWithStrong(block) {
+  const paragraphs = block.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [];
+  return paragraphs.filter(function (p) { return /<strong[^>]*>/i.test(p); });
+}
+
+function getStrongText(pBlock) {
+  const m = pBlock.match(/<strong[^>]*>([\s\S]*?)<\/strong>/i);
+  return m ? stripTags(m[1]) : '';
+}
+
+function getDataULinks(pBlock) {
+  const links = [];
+  const re = /<a[^>]+data-u=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  let m;
+  while ((m = re.exec(pBlock)) !== null) {
+    links.push({ dataU: m[1], text: stripTags(m[2]) });
+  }
+  return links;
+}
+
+function temporadaOk(tituloPagina, seasonNum) {
+  const re = new RegExp('(' + seasonNum + '[aª\\u00ba\\u00b0]?\\s*temporada|temporada\\s*' + seasonNum + ')', 'i');
+  return re.test(tituloPagina);
+}
 
 function executarBusca(query, cookieState) {
   const searchUrl = BASE_URL + '/?s=' + encodeURIComponent(query);
@@ -377,14 +412,149 @@ function buscarFilme(itemData) {
 }
 
 // ---------------------------------------------------------------------------
+// Busca de série
+// ---------------------------------------------------------------------------
+
+function buscarSerie(itemData, season, episode) {
+  const titulo = itemData.title || '';
+  const tituloOriginal = itemData.original_title || '';
+
+  if (!titulo || season == null || episode == null) {
+    log('buscarSerie: parâmetros inválidos, abortando');
+    return Promise.resolve([]);
+  }
+
+  const sNum = parseInt(season, 10);
+  const eNum = parseInt(episode, 10);
+  const sPad = String(sNum).padStart(2, '0');
+  const ePad = String(eNum).padStart(2, '0');
+
+  const queries = [titulo];
+  if (tituloOriginal && tituloOriginal.toLowerCase() !== titulo.toLowerCase()) {
+    queries.push(tituloOriginal);
+  }
+
+  const cookieState = { cookie: '' };
+  const sources = [];
+
+  function processCard(card) {
+    return fetchPagina(card.url, cookieState).then(function (html) {
+      if (!html) return;
+
+      const tituloPaginaLower = getTituloLimpo(html).toLowerCase();
+
+      // CASO A: episódios separados
+      const epDiv = getEpisodiosDiv(html);
+      if (epDiv) {
+        if (!temporadaOk(tituloPaginaLower, sNum)) return;
+
+        const idiomaEp = idiomaDoTexto(getH3Text(epDiv));
+        const qualidade = getQualidade(html);
+        const tamanho = getTamanho(html);
+        const tituloLimpo = getTituloLimpo(html) || titulo;
+
+        if (!tituloCompativel(tituloLimpo, titulo)) return;
+
+        const paragrafos = getPBlocksWithStrong(epDiv);
+        for (let i = 0; i < paragrafos.length; i++) {
+          const epText = getStrongText(paragrafos[i]).toLowerCase();
+          let encontrado = false;
+
+          if (new RegExp('epis[oó]dios?\\s+0?' + eNum + '\\b').test(epText)) {
+            encontrado = true;
+          }
+          if (!encontrado) {
+            const m = epText.match(/epis[oó]dios?\s+0?(\d+)\s+(?:e|ao)\s+0?(\d+)/);
+            if (m && parseInt(m[1], 10) <= eNum && eNum <= parseInt(m[2], 10)) encontrado = true;
+          }
+          if (!encontrado) continue;
+
+          const links = getDataULinks(paragrafos[i]);
+          links.forEach(function (link) {
+            const magnet = unshuffleString(link.dataU);
+            if (!magnet || magnet.indexOf('magnet:') === -1) return;
+            let qEp = qualidade;
+            const mQ = link.text.match(/(4K|2160p|1080p|720p|480p)/i);
+            if (mQ) qEp = mQ[1];
+            sources.push({
+              url: magnet,
+              title: tituloLimpo + ' S' + sPad + 'E' + ePad,
+              quality: (qEp || 'HD').toLowerCase(),
+              size: tamanho,
+              languages: idiomaEp,
+            });
+          });
+          break; // já achou o parágrafo do episódio certo
+        }
+        return;
+      }
+
+      // CASO B: temporada inteira em bloco btn-down
+      if (!temporadaOk(tituloPaginaLower, sNum)) return;
+
+      const tituloLimpo = getTituloLimpo(html) || titulo;
+      const qualidade = getQualidade(html);
+      const tamanho = getTamanho(html);
+      const blocks = getBtnDownBlocks(html);
+
+      blocks.forEach(function (block) {
+        const parsed = parseBtnDown(block, qualidade, tamanho);
+        if (!parsed) return;
+        sources.push({
+          url: parsed.url,
+          title: tituloLimpo,
+          quality: (parsed.qualidade || 'HD').toLowerCase(),
+          size: parsed.tamanho,
+          languages: parsed.idioma,
+        });
+      });
+    });
+  }
+
+  function processQuery(query) {
+    if (sources.length) return Promise.resolve();
+    return buscarPaginas(query, titulo, 8, cookieState).then(function (paginas) {
+      return paginas.reduce(function (p, card) {
+        return p.then(function () {
+          if (sources.length) return Promise.resolve();
+          return processCard(card);
+        });
+      }, Promise.resolve());
+    });
+  }
+
+  return queries.reduce(function (p, q) {
+    return p.then(function () { return processQuery(q); });
+  }, Promise.resolve()).then(function () {
+    log('buscarSerie: ' + sources.length + ' fonte(s) encontrada(s)');
+    return sources;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Entry point
 // ---------------------------------------------------------------------------
 
-function fetchTmdbMovie(tmdbId) {
-  const url = TMDB_BASE + '/movie/' + tmdbId + '?api_key=' + TMDB_API_KEY + '&language=pt-BR';
+function fetchTmdbDetails(tmdbId, isMovie) {
+  const path = isMovie ? '/movie/' + tmdbId : '/tv/' + tmdbId;
+  const url = TMDB_BASE + path + '?api_key=' + TMDB_API_KEY + '&language=pt-BR';
   return fetchPlain(url).then(function (res) {
     if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
     return res.json();
+  });
+}
+
+function mapToStreamObjects(sources, extraTitleSuffix) {
+  return sources.map(function (s) {
+    return {
+      name: 'StarckFilmes',
+      title: '🎬 ' + s.title + '\n🌎 ' + s.languages,
+      url: s.url,
+      quality: s.quality,
+      group: s.languages,
+      provider: 'StarckFilmes',
+      headers: {},
+    };
   });
 }
 
@@ -404,34 +574,28 @@ function getStreams(tmdbId, mediaType, season, episode, providerUrl) {
   }
 
   try {
-    log('[getStreams] tmdbId=' + tmdbId + ' mediaType=' + mediaType);
+    log('[getStreams] tmdbId=' + tmdbId + ' mediaType=' + mediaType + ' season=' + season + ' episode=' + episode);
 
-    if (mediaType !== 'movie') {
-      log('[getStreams] só filmes por enquanto, retornando vazio');
+    const isMovie = mediaType === 'movie';
+    const isTv = mediaType === 'tv' || mediaType === 'series' || mediaType === 'tvshow';
+    if (!isMovie && !isTv) {
+      log('[getStreams] mediaType não suportado: ' + mediaType);
       return Promise.resolve([]);
     }
 
-    return fetchTmdbMovie(tmdbId).then(function (details) {
-      const dateStr = details.release_date || '';
-      const itemData = {
-        title: details.title,
-        original_title: details.original_title,
-        year: dateStr ? parseInt(dateStr.slice(0, 4), 10) : null,
-      };
-      log('[getStreams] TMDB OK: title="' + itemData.title + '" year=' + itemData.year);
+    return fetchTmdbDetails(tmdbId, isMovie).then(function (details) {
+      const title = isMovie ? details.title : details.name;
+      const originalTitle = isMovie ? details.original_title : details.original_name;
+      const dateStr = details.release_date || details.first_air_date || '';
+      const year = dateStr ? parseInt(dateStr.slice(0, 4), 10) : null;
 
-      return buscarFilme(itemData).then(function (sources) {
-        return sources.map(function (s) {
-          return {
-            name: 'StarckFilmes ' + (s.quality === '4k' ? '4K' : s.quality),
-            title: '🎬 ' + s.title + '\n📦 StarckFilmes\n🌎 ' + s.languages + (s.size ? ('\n💾 ' + s.size) : ''),
-            url: s.url,
-            quality: s.quality,
-            group: s.languages,
-            provider: 'StarckFilmes',
-            headers: {},
-          };
-        });
+      log('[getStreams] TMDB OK: title="' + title + '" year=' + year);
+
+      const itemData = { title: title, original_title: originalTitle, year: year };
+      const p = isMovie ? buscarFilme(itemData) : buscarSerie(itemData, season, episode);
+
+      return p.then(function (sources) {
+        return mapToStreamObjects(sources);
       });
     }).catch(debugError);
   } catch (e) {
