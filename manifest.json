@@ -15,5 +15,17 @@
       "logo": "https://i.postimg.cc/mgztMh3f/Cineroom.jpg",
       "contentLanguage": ["pt-BR"]
     }
+    {
+      "id": "starckfilmes",
+      "name": "StarckFilmes",
+      "description": "Scraper de filmes portado do CineRoom Burst",
+      "version": "1.0.0",
+      "author": "Gael1303",
+      "supportedTypes": ["movie"],
+      "filename": "providers/starckfilmes-movies.js",
+      "enabled": true,
+      "formats": ["mkv", "mp4"],
+      "contentLanguage": ["pt-BR"]
+    }
   ]
 }
