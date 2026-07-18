@@ -21,7 +21,7 @@
       "description": "Scraper de filmes portado do CineRoom Burst",
       "version": "1.0.0",
       "author": "Gael1303",
-      "supportedTypes": ["movie"],
+      "supportedTypes": ["movie", "tv"],
       "filename": "providers/starckfilmes-movies.js",
       "enabled": true,
       "formats": ["mkv", "mp4"],
