@@ -25,6 +25,7 @@
       "filename": "providers/starckfilmes-movies.js",
       "enabled": true,
       "formats": ["mkv", "mp4"],
+      "logo": "https://i.postimg.cc/mgztMh3f/Cineroom.jpg",
       "contentLanguage": ["pt-BR"]
     }
   ]
