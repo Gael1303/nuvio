@@ -10,6 +10,7 @@ const log = function () {
 };
 
 const BASE_URL = 'https://starckfilmes-v22.com';
+const MAX_RESULTS = 6;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -212,44 +213,49 @@ function idiomaDoTexto(texto) {
   return 'PT-BR';
 }
 
-// Extrai os blocos <span class="btn-down">...</span> — melhor esforço via
-// regex não-guloso; assume que não há aninhamento de OUTRO btn-down dentro.
-function getBtnDownBlocks(html) {
-  const blocks = [];
-  const re = /<span[^>]*class=["'][^"']*btn-down[^"']*["'][^>]*>([\s\S]*?)<\/span>\s*<\/span>/gi;
+// Estratégia robusta: em vez de tentar delimitar o bloco inteiro
+// <span class="btn-down">...</span> (frágil — depende de contar </span>
+// certinho, e quebra se um dos links tiver estrutura levemente diferente),
+// busca cada link data-u diretamente e usa o texto ao redor dele (antes e
+// depois) pra achar idioma/qualidade/tamanho. Isso captura TODOS os links
+// que existirem, não importa quantos.
+function getDataULinksWithContext(html) {
+  const links = [];
+  const re = /<a[^>]+data-u=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
-    blocks.push(m[0]);
+    const before = html.slice(Math.max(0, m.index - 500), m.index);
+    const after = html.slice(re.lastIndex, re.lastIndex + 200);
+    links.push({ dataU: m[1], linkText: stripTags(m[2]), before: before, after: after });
   }
-  return blocks;
+  return links;
 }
 
-function parseBtnDown(block, qualidadeFallback, tamanhoFallback) {
-  const dataUMatch = block.match(/<a[^>]+data-u=["']([^"']+)["']/i);
-  if (!dataUMatch) return null;
-  const magnet = unshuffleString(dataUMatch[1]);
+function parseDataULink(link, qualidadeFallback, tamanhoFallback) {
+  const magnet = unshuffleString(link.dataU);
   if (!magnet || magnet.indexOf('magnet:') === -1) return null;
 
-  // Idioma: primeiro <span> dentro de <span class="text">
+  // Idioma: procura de trás pra frente no texto anterior ao link (o mais
+  // próximo é o mais provável de pertencer a esse link específico).
   let idioma = 'PT-BR';
-  const textSpanMatch = block.match(/<span[^>]*class=["'][^"']*\btext\b[^"']*["'][^>]*>([\s\S]*?)<\/span>/i);
-  if (textSpanMatch) {
-    const innerSpans = textSpanMatch[1].match(/<span[^>]*>([\s\S]*?)<\/span>/gi) || [];
-    if (innerSpans.length) idioma = idiomaDoTexto(stripTags(innerSpans[0]));
-  }
-
-  let qualidade = qualidadeFallback;
-  let tamanho = tamanhoFallback;
-  if (textSpanMatch) {
-    const innerSpans = textSpanMatch[1].match(/<span[^>]*>([\s\S]*?)<\/span>/gi) || [];
-    if (innerSpans.length >= 3) {
-      const textoRes = stripTags(innerSpans[2]);
-      const mQ = textoRes.match(/(4K|2160p|1080p|720p|480p)/i);
-      if (mQ) qualidade = mQ[1];
-      const mS = textoRes.match(/\(([^)]+(?:GB|MB))\)/i);
-      if (mS) tamanho = mS[1];
+  const spansAntes = link.before.match(/<span[^>]*>([\s\S]*?)<\/span>/gi) || [];
+  for (let i = spansAntes.length - 1; i >= 0; i--) {
+    const txt = stripTags(spansAntes[i]).toLowerCase();
+    if (txt.includes('dual') || txt.includes('multi') || txt.includes('dublado') || txt.includes('legendado')) {
+      idioma = idiomaDoTexto(txt);
+      break;
     }
   }
+
+  // Qualidade/tamanho: procura no texto do próprio link, depois no que
+  // vem antes/depois dele.
+  let qualidade = qualidadeFallback;
+  let tamanho = tamanhoFallback;
+  const janela = link.linkText + ' ' + link.before.slice(-200) + ' ' + link.after;
+  const mQ = janela.match(/(4K|2160p|1080p|720p|480p)/i);
+  if (mQ) qualidade = mQ[1];
+  const mS = janela.match(/\(([^)]+(?:GB|MB))\)/i);
+  if (mS) tamanho = mS[1];
 
   return { url: magnet, idioma: idioma, qualidade: qualidade, tamanho: tamanho };
 }
@@ -375,10 +381,10 @@ function buscarFilme(itemData) {
 
       const qualidade = getQualidade(html);
       const tamanho = getTamanho(html);
-      const blocks = getBtnDownBlocks(html);
+      const links = getDataULinksWithContext(html);
 
-      blocks.forEach(function (block) {
-        const parsed = parseBtnDown(block, qualidade, tamanho);
+      links.forEach(function (link) {
+        const parsed = parseDataULink(link, qualidade, tamanho);
         if (!parsed) return;
         sources.push({
           url: parsed.url,
@@ -392,11 +398,11 @@ function buscarFilme(itemData) {
   }
 
   function processQuery(query) {
-    if (sources.length) return Promise.resolve();
-    return buscarPaginas(query, titulo, 5, cookieState).then(function (paginas) {
+    if (sources.length >= MAX_RESULTS) return Promise.resolve();
+    return buscarPaginas(query, titulo, 8, cookieState).then(function (paginas) {
       return paginas.reduce(function (p, card) {
         return p.then(function () {
-          if (sources.length) return Promise.resolve();
+          if (sources.length >= MAX_RESULTS) return Promise.resolve();
           return processCard(card);
         });
       }, Promise.resolve());
@@ -495,10 +501,10 @@ function buscarSerie(itemData, season, episode) {
       const tituloLimpo = getTituloLimpo(html) || titulo;
       const qualidade = getQualidade(html);
       const tamanho = getTamanho(html);
-      const blocks = getBtnDownBlocks(html);
+      const links = getDataULinksWithContext(html);
 
-      blocks.forEach(function (block) {
-        const parsed = parseBtnDown(block, qualidade, tamanho);
+      links.forEach(function (link) {
+        const parsed = parseDataULink(link, qualidade, tamanho);
         if (!parsed) return;
         sources.push({
           url: parsed.url,
@@ -512,11 +518,11 @@ function buscarSerie(itemData, season, episode) {
   }
 
   function processQuery(query) {
-    if (sources.length) return Promise.resolve();
+    if (sources.length >= MAX_RESULTS) return Promise.resolve();
     return buscarPaginas(query, titulo, 8, cookieState).then(function (paginas) {
       return paginas.reduce(function (p, card) {
         return p.then(function () {
-          if (sources.length) return Promise.resolve();
+          if (sources.length >= MAX_RESULTS) return Promise.resolve();
           return processCard(card);
         });
       }, Promise.resolve());
@@ -546,9 +552,10 @@ function fetchTmdbDetails(tmdbId, isMovie) {
 
 function mapToStreamObjects(sources, extraTitleSuffix) {
   return sources.map(function (s) {
+    const sizeInfo = (s.size && s.size !== 'N/A') ? ('\n💾 ' + s.size) : '';
     return {
       name: 'StarckFilmes',
-      title: '🎬 ' + s.title + '\n🌎 ' + s.languages,
+      title: '🎬 ' + s.title + '\n🌎 ' + s.languages + sizeInfo,
       url: s.url,
       quality: s.quality,
       group: s.languages,
