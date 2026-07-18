@@ -10,7 +10,7 @@ const log = function () {
 };
 
 const MAX_RETRIES = 2;
-const MAX_RESULTS_MOVIE = 5;
+const MAX_RESULTS_MOVIE = 3;
 const MAX_RESULTS_EPISODE = 2;
 
 const USER_AGENT =
@@ -766,7 +766,7 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
     : 'animezey-movie-' + this.tmdbId;
 
   return {
-      name: languageLabel,
+      name: 'Animezey\n' + languageLabel,
       url: downloadUrl,
       quality: quality,
       group: language,
