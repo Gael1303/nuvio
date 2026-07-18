@@ -10,7 +10,7 @@ const log = function () {
 };
 
 const BASE_URL = 'https://starckfilmes-v22.com';
-const MAX_RESULTS = 6;
+const MAX_RESULTS = 3;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
