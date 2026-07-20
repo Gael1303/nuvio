@@ -4,13 +4,13 @@
  * há parser de DOM disponível — mais frágil que o AnimeZey (que era JSON puro).
  */
 
-const DEBUG = false;
+const DEBUG = true;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[starck]'].concat(Array.prototype.slice.call(arguments)));
 };
 
 const BASE_URL = 'https://starckfilmes-v22.com';
-const MAX_RESULTS = 3;
+const MAX_RESULTS = 6;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -219,6 +219,32 @@ function idiomaDoTexto(texto) {
 // busca cada link data-u diretamente e usa o texto ao redor dele (antes e
 // depois) pra achar idioma/qualidade/tamanho. Isso captura TODOS os links
 // que existirem, não importa quantos.
+// Corta o HTML antes da primeira seção que tipicamente NÃO faz parte do
+// conteúdo do próprio filme (relacionados, comentários, rodapé, sidebar).
+// Sem isso, a busca de links vaza pra outras seções da página que também
+// têm data-u, pegando magnets de OUTROS filmes.
+function cortarAntesDeSecoesIrrelevantes(html) {
+  const marcadores = [
+    /<div[^>]*class=["'][^"']*relacionad[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*similar[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*related[^"']*["']/i,
+    /<div[^>]*id=["']comments?["']/i,
+    /<div[^>]*id=["']respond["']/i,
+    /<div[^>]*class=["'][^"']*sidebar[^"']*["']/i,
+    /<div[^>]*class=["'][^"']*widget[^"']*["']/i,
+    /<footer[\s>]/i,
+    /<div[^>]*class=["'][^"']*post-navigation[^"']*["']/i,
+  ];
+
+  let cortIdx = html.length;
+  marcadores.forEach(function (re) {
+    const m = html.match(re);
+    if (m && m.index < cortIdx) cortIdx = m.index;
+  });
+
+  return html.slice(0, cortIdx);
+}
+
 function getDataULinksWithContext(html) {
   const links = [];
   const re = /<a[^>]+data-u=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
@@ -234,6 +260,21 @@ function getDataULinksWithContext(html) {
 function parseDataULink(link, qualidadeFallback, tamanhoFallback) {
   const magnet = unshuffleString(link.dataU);
   if (!magnet || magnet.indexOf('magnet:') === -1) return null;
+
+  // Filtro anti-isca: alguns sites injetam um torrent promocional com o
+  // nome do próprio site no arquivo (dn=), sem relação com o filme. Se o
+  // nome decodificado bater com o domínio do site, descarta.
+  const dnMatch = magnet.match(/[?&]dn=([^&]+)/i);
+  if (dnMatch) {
+    let dn = dnMatch[1];
+    try { dn = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch (e) {}
+    const dnLower = dn.toLowerCase();
+    const siteKeywords = ['starckfilmes', 'starck filmes', 'starck-filmes'];
+    if (siteKeywords.some(function (k) { return dnLower.includes(k); })) {
+      log('Descartando torrent-isca com nome do site: ' + dn);
+      return null;
+    }
+  }
 
   // Idioma: procura de trás pra frente no texto anterior ao link (o mais
   // próximo é o mais provável de pertencer a esse link específico).
@@ -381,7 +422,10 @@ function buscarFilme(itemData) {
 
       const qualidade = getQualidade(html);
       const tamanho = getTamanho(html);
-      const links = getDataULinksWithContext(html);
+      const contentStart = html.search(/<h[12][^>]*class=["'][^"']*post-title/i);
+      const searchArea = contentStart !== -1 ? html.slice(contentStart) : html;
+      const areaConteudo = cortarAntesDeSecoesIrrelevantes(searchArea);
+      const links = getDataULinksWithContext(areaConteudo);
 
       links.forEach(function (link) {
         const parsed = parseDataULink(link, qualidade, tamanho);
@@ -501,7 +545,10 @@ function buscarSerie(itemData, season, episode) {
       const tituloLimpo = getTituloLimpo(html) || titulo;
       const qualidade = getQualidade(html);
       const tamanho = getTamanho(html);
-      const links = getDataULinksWithContext(html);
+      const contentStart = html.search(/<h[12][^>]*class=["'][^"']*post-title/i);
+      const searchArea = contentStart !== -1 ? html.slice(contentStart) : html;
+      const areaConteudo = cortarAntesDeSecoesIrrelevantes(searchArea);
+      const links = getDataULinksWithContext(areaConteudo);
 
       links.forEach(function (link) {
         const parsed = parseDataULink(link, qualidade, tamanho);
