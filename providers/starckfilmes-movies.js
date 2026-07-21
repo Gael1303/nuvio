@@ -408,6 +408,7 @@ function buscarFilme(itemData) {
 
   const cookieState = { cookie: '' };
   const sources = [];
+  const magnetsVistos = {};
 
   function processCard(card) {
     return fetchPagina(card.url, cookieState).then(function (html) {
@@ -428,8 +429,11 @@ function buscarFilme(itemData) {
       const links = getDataULinksWithContext(areaConteudo);
 
       links.forEach(function (link) {
+        if (sources.length >= MAX_RESULTS) return;
         const parsed = parseDataULink(link, qualidade, tamanho);
         if (!parsed) return;
+        if (magnetsVistos[parsed.url]) return;
+        magnetsVistos[parsed.url] = true;
         sources.push({
           url: parsed.url,
           title: tituloLimpo,
@@ -486,6 +490,7 @@ function buscarSerie(itemData, season, episode) {
 
   const cookieState = { cookie: '' };
   const sources = [];
+  const magnetsVistos = {};
 
   function processCard(card) {
     return fetchPagina(card.url, cookieState).then(function (html) {
@@ -521,8 +526,11 @@ function buscarSerie(itemData, season, episode) {
 
           const links = getDataULinks(paragrafos[i]);
           links.forEach(function (link) {
+            if (sources.length >= MAX_RESULTS) return;
             const magnet = unshuffleString(link.dataU);
             if (!magnet || magnet.indexOf('magnet:') === -1) return;
+            if (magnetsVistos[magnet]) return;
+            magnetsVistos[magnet] = true;
             let qEp = qualidade;
             const mQ = link.text.match(/(4K|2160p|1080p|720p|480p)/i);
             if (mQ) qEp = mQ[1];
@@ -551,8 +559,11 @@ function buscarSerie(itemData, season, episode) {
       const links = getDataULinksWithContext(areaConteudo);
 
       links.forEach(function (link) {
+        if (sources.length >= MAX_RESULTS) return;
         const parsed = parseDataULink(link, qualidade, tamanho);
         if (!parsed) return;
+        if (magnetsVistos[parsed.url]) return;
+        magnetsVistos[parsed.url] = true;
         sources.push({
           url: parsed.url,
           title: tituloLimpo,
