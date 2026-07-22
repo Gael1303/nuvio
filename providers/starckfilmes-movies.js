@@ -4,7 +4,7 @@
  * há parser de DOM disponível — mais frágil que o AnimeZey (que era JSON puro).
  */
 
-const DEBUG = false;
+const DEBUG = true;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[starck]'].concat(Array.prototype.slice.call(arguments)));
 };
@@ -312,6 +312,25 @@ function getH3Text(block) {
   return m ? stripTags(m[1]) : '';
 }
 
+// Divide o conteúdo da div de episódios em seções por <h3> (cada uma
+// normalmente representa uma versão de áudio diferente: "VERSÃO DUAL
+// ÁUDIO", "VERSÃO LEGENDADO", etc). Sem isso, todos os episódios ficavam
+// rotulados com o idioma do PRIMEIRO h3 da página, mesmo quando pertenciam
+// a uma seção diferente.
+function splitByH3Sections(html) {
+  const parts = html.split(/(<h3[^>]*>[\s\S]*?<\/h3>)/i);
+  const sections = [];
+  let currentLabel = '';
+  for (let i = 0; i < parts.length; i++) {
+    if (/^<h3/i.test(parts[i])) {
+      currentLabel = stripTags(parts[i]);
+    } else if (parts[i] && parts[i].trim()) {
+      sections.push({ label: currentLabel, content: parts[i] });
+    }
+  }
+  return sections;
+}
+
 function getPBlocksWithStrong(block) {
   const paragraphs = block.match(/<p[^>]*>([\s\S]*?)<\/p>/gi) || [];
   return paragraphs.filter(function (p) { return /<strong[^>]*>/i.test(p); });
@@ -500,47 +519,55 @@ function buscarSerie(itemData, season, episode) {
       if (epDiv) {
         if (!temporadaOk(tituloPaginaLower, sNum)) return;
 
-        const idiomaEp = idiomaDoTexto(getH3Text(epDiv));
-        const qualidade = getQualidade(html);
-        const tamanho = getTamanho(html);
         const tituloLimpo = getTituloLimpo(html) || titulo;
-
         if (!tituloCompativel(tituloLimpo, titulo)) return;
 
-        const paragrafos = getPBlocksWithStrong(epDiv);
-        for (let i = 0; i < paragrafos.length; i++) {
-          const epText = getStrongText(paragrafos[i]).toLowerCase();
-          let encontrado = false;
+        const secoes = splitByH3Sections(epDiv);
+        // Fallback: se não achou nenhuma seção com h3 (formato sem divisão
+        // de idioma), trata a div inteira como uma seção só.
+        const listaSecoes = secoes.length ? secoes : [{ label: '', content: epDiv }];
 
-          if (new RegExp('epis[oó]dios?\\s+0?' + eNum + '\\b').test(epText)) {
-            encontrado = true;
-          }
-          if (!encontrado) {
-            const m = epText.match(/epis[oó]dios?\s+0?(\d+)\s+(?:e|ao)\s+0?(\d+)/);
-            if (m && parseInt(m[1], 10) <= eNum && eNum <= parseInt(m[2], 10)) encontrado = true;
-          }
-          if (!encontrado) continue;
+        listaSecoes.forEach(function (secao) {
+          if (sources.length >= MAX_RESULTS) return;
+          const idiomaSecao = idiomaDoTexto(secao.label);
+          const paragrafos = getPBlocksWithStrong(secao.content);
 
-          const links = getDataULinks(paragrafos[i]);
-          links.forEach(function (link) {
-            if (sources.length >= MAX_RESULTS) return;
-            const magnet = unshuffleString(link.dataU);
-            if (!magnet || magnet.indexOf('magnet:') === -1) return;
-            if (magnetsVistos[magnet]) return;
-            magnetsVistos[magnet] = true;
-            let qEp = qualidade;
-            const mQ = link.text.match(/(4K|2160p|1080p|720p|480p)/i);
-            if (mQ) qEp = mQ[1];
-            sources.push({
-              url: magnet,
-              title: tituloLimpo + ' S' + sPad + 'E' + ePad,
-              quality: (qEp || 'HD').toLowerCase(),
-              size: tamanho,
-              languages: idiomaEp,
+          for (let i = 0; i < paragrafos.length; i++) {
+            if (sources.length >= MAX_RESULTS) break;
+            const epText = getStrongText(paragrafos[i]).toLowerCase();
+            let encontrado = false;
+
+            if (new RegExp('epis[oó]dios?\\s+0?' + eNum + '\\b').test(epText)) {
+              encontrado = true;
+            }
+            if (!encontrado) {
+              const m = epText.match(/epis[oó]dios?\s+0?(\d+)\s+(?:e|ao)\s+0?(\d+)/);
+              if (m && parseInt(m[1], 10) <= eNum && eNum <= parseInt(m[2], 10)) encontrado = true;
+            }
+            if (!encontrado) continue;
+
+            const links = getDataULinks(paragrafos[i]);
+            links.forEach(function (link) {
+              if (sources.length >= MAX_RESULTS) return;
+              const magnet = unshuffleString(link.dataU);
+              if (!magnet || magnet.indexOf('magnet:') === -1) return;
+              if (magnetsVistos[magnet]) return;
+              magnetsVistos[magnet] = true;
+              // Nesse formato a qualidade vem no próprio texto do link
+              // (ex: "1080p"); não existe tamanho disponível aqui.
+              const mQ = link.text.match(/(4K|2160p|1080p|720p|480p)/i);
+              const qEp = mQ ? mQ[1] : 'HD';
+              sources.push({
+                url: magnet,
+                title: tituloLimpo + ' S' + sPad + 'E' + ePad,
+                quality: qEp.toLowerCase(),
+                size: 'N/A',
+                languages: idiomaSecao,
+              });
             });
-          });
-          break; // já achou o parágrafo do episódio certo
-        }
+            break; // já achou o parágrafo do episódio certo NESSA seção
+          }
+        });
         return;
       }
 
