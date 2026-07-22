@@ -9,7 +9,7 @@ const log = function () {
   if (DEBUG) console.log.apply(console, ['[starck]'].concat(Array.prototype.slice.call(arguments)));
 };
 
-const BASE_URL = 'https://starckfilmes-v23.com';
+const BASE_URL = 'https://starckfilmes-v22.com';
 const MAX_RESULTS = 6;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
@@ -234,6 +234,12 @@ function cortarAntesDeSecoesIrrelevantes(html) {
     /<div[^>]*class=["'][^"']*widget[^"']*["']/i,
     /<footer[\s>]/i,
     /<div[^>]*class=["'][^"']*post-navigation[^"']*["']/i,
+    // Marcadores por TEXTO (não por classe CSS) — o site usa títulos em
+    // português pra seção de recomendados, que não bate com classe em inglês.
+    /voc[eê]\s*(tamb[eé]m\s*)?pode\s*gostar/i,
+    /assista\s*tamb[eé]m/i,
+    /recomendados?\b/i,
+    /mais\s*como\s*este/i,
   ];
 
   let cortIdx = html.length;
