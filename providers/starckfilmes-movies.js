@@ -4,7 +4,7 @@
  * há parser de DOM disponível — mais frágil que o AnimeZey (que era JSON puro).
  */
 
-const DEBUG = true;
+const DEBUG = false;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[starck]'].concat(Array.prototype.slice.call(arguments)));
 };
@@ -256,8 +256,8 @@ function getDataULinksWithContext(html) {
   const re = /<a[^>]+data-u=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
-    const before = html.slice(Math.max(0, m.index - 500), m.index);
-    const after = html.slice(re.lastIndex, re.lastIndex + 200);
+    const before = html.slice(Math.max(0, m.index - 200), m.index);
+    const after = html.slice(re.lastIndex, re.lastIndex + 500);
     links.push({ dataU: m[1], linkText: stripTags(m[2]), before: before, after: after });
   }
   return links;
@@ -267,42 +267,33 @@ function parseDataULink(link, qualidadeFallback, tamanhoFallback) {
   const magnet = unshuffleString(link.dataU);
   if (!magnet || magnet.indexOf('magnet:') === -1) return null;
 
-  // Filtro anti-isca: alguns sites injetam um torrent promocional com o
-  // nome do próprio site no arquivo (dn=), sem relação com o filme. Se o
-  // nome decodificado bater com o domínio do site, descarta.
-  const dnMatch = magnet.match(/[?&]dn=([^&]+)/i);
-  if (dnMatch) {
-    let dn = dnMatch[1];
-    try { dn = decodeURIComponent(dn.replace(/\+/g, ' ')); } catch (e) {}
-    const dnLower = dn.toLowerCase();
-    const siteKeywords = ['starckfilmes', 'starck filmes', 'starck-filmes'];
-    if (siteKeywords.some(function (k) { return dnLower.includes(k); })) {
-      log('Descartando torrent-isca com nome do site: ' + dn);
-      return null;
-    }
-  }
-
-  // Idioma: procura de trás pra frente no texto anterior ao link (o mais
-  // próximo é o mais provável de pertencer a esse link específico).
+  // Estrutura real confirmada:
+  // <a data-u="..."></a>
+  // <span class="mm-down-ico"></span>
+  // <span class="text">
+  //   <span>Dual Áudio<strong>MKV</strong></span>
+  //   <span>Download</span>
+  //   <span>1080p (2.87 GB)</span>
+  // </span>
+  // As infos ficam DEPOIS do link (em link.after), não antes.
   let idioma = 'PT-BR';
-  const spansAntes = link.before.match(/<span[^>]*>([\s\S]*?)<\/span>/gi) || [];
-  for (let i = spansAntes.length - 1; i >= 0; i--) {
-    const txt = stripTags(spansAntes[i]).toLowerCase();
-    if (txt.includes('dual') || txt.includes('multi') || txt.includes('dublado') || txt.includes('legendado')) {
-      idioma = idiomaDoTexto(txt);
-      break;
-    }
-  }
-
-  // Qualidade/tamanho: procura no texto do próprio link, depois no que
-  // vem antes/depois dele.
   let qualidade = qualidadeFallback;
   let tamanho = tamanhoFallback;
-  const janela = link.linkText + ' ' + link.before.slice(-200) + ' ' + link.after;
-  const mQ = janela.match(/(4K|2160p|1080p|720p|480p)/i);
-  if (mQ) qualidade = mQ[1];
-  const mS = janela.match(/\(([^)]+(?:GB|MB))\)/i);
-  if (mS) tamanho = mS[1];
+
+  const textSpanMatch = link.after.match(/<span[^>]*class=["'][^"']*\btext\b[^"']*["'][^>]*>([\s\S]*?<\/span>\s*<\/span>)/i);
+  if (textSpanMatch) {
+    const innerSpans = textSpanMatch[1].match(/<span[^>]*>([\s\S]*?)<\/span>/gi) || [];
+    if (innerSpans.length >= 1) {
+      idioma = idiomaDoTexto(stripTags(innerSpans[0]));
+    }
+    if (innerSpans.length >= 3) {
+      const textoRes = stripTags(innerSpans[2]);
+      const mQ = textoRes.match(/(4K|2160p|1080p|720p|480p)/i);
+      if (mQ) qualidade = mQ[1];
+      const mS = textoRes.match(/\(([^)]+(?:GB|MB))\)/i);
+      if (mS) tamanho = mS[1];
+    }
+  }
 
   return { url: magnet, idioma: idioma, qualidade: qualidade, tamanho: tamanho };
 }
