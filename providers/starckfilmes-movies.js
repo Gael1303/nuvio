@@ -652,7 +652,7 @@ function getStreams(tmdbId, mediaType, season, episode, providerUrl) {
     const msg = (e && e.message) ? e.message : String(e);
     log('[getStreams] ❌ Erro:', msg);
     return [{
-      name: 'StarckFilmes [ERRO]',
+      name: 'StarckFilmes [ERRO] ' + msg.slice(0, 80),
       title: 'DEBUG: ' + msg,
       url: 'https://example.com/erro-debug',
       quality: '0p',
