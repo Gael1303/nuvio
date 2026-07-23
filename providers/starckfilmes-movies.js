@@ -650,9 +650,10 @@ function mapToStreamObjects(sources, extraTitleSuffix) {
 function getStreams(tmdbId, mediaType, season, episode, providerUrl) {
   function debugError(e) {
     const msg = (e && e.message) ? e.message : String(e);
-    log('[getStreams] ❌ Erro:', msg);
+    const ctx = 'id=' + tmdbId + ' type=' + mediaType + (season != null ? ' S' + season + 'E' + episode : '');
+    log('[getStreams] ❌ Erro:', msg, ctx);
     return [{
-      name: 'StarckFilmes [ERRO] ' + msg.slice(0, 80),
+      name: 'StarckFilmes [ERRO] ' + msg.slice(0, 60) + ' (' + ctx + ')',
       title: 'DEBUG: ' + msg,
       url: 'https://example.com/erro-debug',
       quality: '0p',
