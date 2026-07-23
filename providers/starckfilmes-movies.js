@@ -623,12 +623,33 @@ function buscarSerie(itemData, season, episode) {
 // Entry point
 // ---------------------------------------------------------------------------
 
-function fetchTmdbDetails(tmdbId, isMovie) {
-  const path = isMovie ? '/movie/' + tmdbId : '/tv/' + tmdbId;
-  const url = TMDB_BASE + path + '?api_key=' + TMDB_API_KEY + '&language=pt-BR';
-  return fetchPlain(url).then(function (res) {
-    if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
+// Alguns títulos chegam com ID do IMDb (formato "tt1234567") em vez do ID
+// numérico da TMDB — converte via /find antes de buscar os detalhes.
+function resolveTmdbId(id, isMovie) {
+  const idStr = String(id);
+  if (idStr.indexOf('tt') !== 0) return Promise.resolve(idStr);
+
+  const findUrl = TMDB_BASE + '/find/' + idStr + '?api_key=' + TMDB_API_KEY + '&external_source=imdb_id';
+  return fetchPlain(findUrl).then(function (res) {
+    if (!res.ok) throw new Error('TMDB find HTTP ' + res.status);
     return res.json();
+  }).then(function (data) {
+    const results = isMovie ? data.movie_results : data.tv_results;
+    if (results && results.length) return results[0].id;
+    const alt = isMovie ? data.tv_results : data.movie_results;
+    if (alt && alt.length) return alt[0].id;
+    throw new Error('IMDb ID ' + idStr + ' não encontrado na TMDB');
+  });
+}
+
+function fetchTmdbDetails(tmdbId, isMovie) {
+  return resolveTmdbId(tmdbId, isMovie).then(function (realId) {
+    const path = isMovie ? '/movie/' + realId : '/tv/' + realId;
+    const url = TMDB_BASE + path + '?api_key=' + TMDB_API_KEY + '&language=pt-BR';
+    return fetchPlain(url).then(function (res) {
+      if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
+      return res.json();
+    });
   });
 }
 
