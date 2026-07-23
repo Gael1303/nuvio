@@ -4,13 +4,13 @@
  * AbortController (sandbox confirmado sem essas APIs).
  */
 
-const DEBUG = false;
+const DEBUG = true;
 const log = function () {
   if (DEBUG) console.log.apply(console, ['[animezey]'].concat(Array.prototype.slice.call(arguments)));
 };
 
 const MAX_RETRIES = 2;
-const MAX_RESULTS_MOVIE = 3;
+const MAX_RESULTS_MOVIE = 5;
 const MAX_RESULTS_EPISODE = 2;
 
 const USER_AGENT =
@@ -182,12 +182,36 @@ function postToAnimezey(url, payload) {
   });
 }
 
-function fetchTmdbDetails(tmdbId, mediaType) {
-  const path = mediaType === 'movie' ? '/movie/' + tmdbId : '/tv/' + tmdbId;
-  const url = TMDB_BASE + path + '?api_key=' + TMDB_API_KEY + '&language=pt-BR';
-  return fetchPlain(url).then(function (res) {
-    if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
+// Alguns títulos chegam com ID do IMDb (formato "tt1234567") em vez do ID
+// numérico da TMDB. O endpoint /tv|movie/{id} da TMDB só aceita o numérico,
+// por isso convertemos primeiro via /find.
+function resolveTmdbId(id, isMovie) {
+  const idStr = String(id);
+  if (idStr.indexOf('tt') !== 0) return Promise.resolve(idStr);
+
+  const findUrl = TMDB_BASE + '/find/' + idStr + '?api_key=' + TMDB_API_KEY + '&external_source=imdb_id';
+  return fetchPlain(findUrl).then(function (res) {
+    if (!res.ok) throw new Error('TMDB find HTTP ' + res.status);
     return res.json();
+  }).then(function (data) {
+    const results = isMovie ? data.movie_results : data.tv_results;
+    if (results && results.length) return results[0].id;
+    // fallback: tenta o outro tipo, caso o mediaType recebido esteja trocado
+    const alt = isMovie ? data.tv_results : data.movie_results;
+    if (alt && alt.length) return alt[0].id;
+    throw new Error('IMDb ID ' + idStr + ' não encontrado na TMDB');
+  });
+}
+
+function fetchTmdbDetails(tmdbId, mediaType) {
+  const isMovie = mediaType === 'movie';
+  return resolveTmdbId(tmdbId, isMovie).then(function (realId) {
+    const path = isMovie ? '/movie/' + realId : '/tv/' + realId;
+    const url = TMDB_BASE + path + '?api_key=' + TMDB_API_KEY + '&language=pt-BR';
+    return fetchPlain(url).then(function (res) {
+      if (!res.ok) throw new Error('TMDB HTTP ' + res.status);
+      return res.json();
+    });
   });
 }
 
@@ -790,12 +814,13 @@ AnimeZeyScraper.prototype._createResultItem = function (fileData, downloadUrl) {
 function getStreams(tmdbId, mediaType, season, episode, providerUrl) {
   function debugError(e) {
     const msg = (e && e.message) ? e.message : String(e);
-    log('[getStreams] ❌ Erro:', msg);
+    const ctx = 'id=' + tmdbId + ' type=' + mediaType + (season != null ? ' S' + season + 'E' + episode : '');
+    log('[getStreams] ❌ Erro:', msg, ctx);
     return [{
-      name: 'AnimeZey [ERRO]',
+      name: 'AnimeZey [ERRO] ' + msg.slice(0, 60) + ' (' + ctx + ')',
       title: 'DEBUG: ' + msg,
       url: 'https://example.com/erro-debug',
-      quality: 0,
+      quality: '0p',
       group: 'DEBUG',
       provider: 'AnimeZey',
       headers: {},
