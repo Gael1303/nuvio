@@ -46,8 +46,6 @@ function isVerificationPage(html) {
 }
 
 function resolveVerification(url, cookieState) {
-  // Sem setTimeout — dispara o POST na hora, sem os 5.5s que o site espera.
-  // Pode falhar por causa disso; é a limitação conhecida dessa versão.
   const postUrl = BASE_URL + '/current-address';
   const headers = { 'User-Agent': USER_AGENT, 'Content-Type': 'application/json' };
   if (cookieState.cookie) headers.Cookie = cookieState.cookie;
@@ -72,7 +70,7 @@ function starckGetWithBypass(url, cookieState, maxAttempts) {
   return starckGet(url, cookieState).then(function (result) {
     function tryResolve(res, attempt) {
       if (!res || !isVerificationPage(res.html)) return res;
-      if (attempt >= maxAttempts) return res; // devolve mesmo sendo gate — quem chama decide
+      if (attempt >= maxAttempts) return res;
       return resolveVerification(url, cookieState).then(function (nova) {
         return tryResolve(nova, attempt + 1);
       });
@@ -85,7 +83,7 @@ function starckGetWithBypass(url, cookieState, maxAttempts) {
 }
 
 // ---------------------------------------------------------------------------
-// Decodificador do magnet embaralhado (idêntico ao Python)
+// Decodificador do magnet embaralhado
 // ---------------------------------------------------------------------------
 
 function unshuffleString(shuffled) {
@@ -154,7 +152,7 @@ function tituloCompativel(tituloPagina, tituloBusca) {
 }
 
 // ---------------------------------------------------------------------------
-// Extração via regex (substitui BeautifulSoup)
+// Extração via regex
 // ---------------------------------------------------------------------------
 
 function getTituloLimpo(html) {
@@ -213,16 +211,6 @@ function idiomaDoTexto(texto) {
   return 'PT-BR';
 }
 
-// Estratégia robusta: em vez de tentar delimitar o bloco inteiro
-// <span class="btn-down">...</span> (frágil — depende de contar </span>
-// certinho, e quebra se um dos links tiver estrutura levemente diferente),
-// busca cada link data-u diretamente e usa o texto ao redor dele (antes e
-// depois) pra achar idioma/qualidade/tamanho. Isso captura TODOS os links
-// que existirem, não importa quantos.
-// Corta o HTML antes da primeira seção que tipicamente NÃO faz parte do
-// conteúdo do próprio filme (relacionados, comentários, rodapé, sidebar).
-// Sem isso, a busca de links vaza pra outras seções da página que também
-// têm data-u, pegando magnets de OUTROS filmes.
 function cortarAntesDeSecoesIrrelevantes(html) {
   const marcadores = [
     /<div[^>]*class=["'][^"']*relacionad[^"']*["']/i,
@@ -234,8 +222,6 @@ function cortarAntesDeSecoesIrrelevantes(html) {
     /<div[^>]*class=["'][^"']*widget[^"']*["']/i,
     /<footer[\s>]/i,
     /<div[^>]*class=["'][^"']*post-navigation[^"']*["']/i,
-    // Marcadores por TEXTO (não por classe CSS) — o site usa títulos em
-    // português pra seção de recomendados, que não bate com classe em inglês.
     /voc[eê]\s*(tamb[eé]m\s*)?pode\s*gostar/i,
     /assista\s*tamb[eé]m/i,
     /recomendados?\b/i,
@@ -267,15 +253,6 @@ function parseDataULink(link, qualidadeFallback, tamanhoFallback) {
   const magnet = unshuffleString(link.dataU);
   if (!magnet || magnet.indexOf('magnet:') === -1) return null;
 
-  // Estrutura real confirmada:
-  // <a data-u="..."></a>
-  // <span class="mm-down-ico"></span>
-  // <span class="text">
-  //   <span>Dual Áudio<strong>MKV</strong></span>
-  //   <span>Download</span>
-  //   <span>1080p (2.87 GB)</span>
-  // </span>
-  // As infos ficam DEPOIS do link (em link.after), não antes.
   let idioma = 'PT-BR';
   let qualidade = qualidadeFallback;
   let tamanho = tamanhoFallback;
@@ -298,8 +275,6 @@ function parseDataULink(link, qualidadeFallback, tamanhoFallback) {
   return { url: magnet, idioma: idioma, qualidade: qualidade, tamanho: tamanho };
 }
 
-// Div "epsodios" (Caso A) — melhor esforço, assume que não há outra <div>
-// aninhada antes do fechamento real.
 function getEpisodiosDiv(html) {
   const m = html.match(/<div[^>]*class=["'][^"']*\bepsodios\b[^"']*["'][^>]*>([\s\S]*?)<\/div>\s*<\/div>/i);
   if (m) return m[1];
@@ -312,11 +287,6 @@ function getH3Text(block) {
   return m ? stripTags(m[1]) : '';
 }
 
-// Divide o conteúdo da div de episódios em seções por <h3> (cada uma
-// normalmente representa uma versão de áudio diferente: "VERSÃO DUAL
-// ÁUDIO", "VERSÃO LEGENDADO", etc). Sem isso, todos os episódios ficavam
-// rotulados com o idioma do PRIMEIRO h3 da página, mesmo quando pertenciam
-// a uma seção diferente.
 function splitByH3Sections(html) {
   const parts = html.split(/(<h3[^>]*>[\s\S]*?<\/h3>)/i);
   const sections = [];
@@ -370,6 +340,7 @@ function executarBusca(query, cookieState) {
     while ((m = re.exec(result.html)) !== null) {
       cards.push({ url: m[1], titulo: stripTags(m[2]) });
     }
+    log('executarBusca: query="' + query + '" -> ' + cards.length + ' card(s) com /catalog/ encontrados');
     return cards;
   });
 }
@@ -392,13 +363,15 @@ function buscarPaginas(query, tituloBusca, maxResults, cookieState) {
       }
       itens.push(card);
     }
+    log('buscarPaginas: query="' + query + '" -> ' + itens.length + ' pagina(s) candidata(s) apos filtro de titulo');
     return itens;
   });
 }
 
 function fetchPagina(url, cookieState) {
   return starckGetWithBypass(url, cookieState).then(function (result) {
-    if (!result || isVerificationPage(result.html)) return null;
+    if (!result) { log('fetchPagina: sem resposta para ' + url); return null; }
+    if (isVerificationPage(result.html)) { log('fetchPagina: caiu no gate de verificacao em ' + url); return null; }
     return result.html;
   });
 }
@@ -503,34 +476,42 @@ function buscarSerie(itemData, season, episode) {
   if (tituloOriginal && tituloOriginal.toLowerCase() !== titulo.toLowerCase()) {
     queries.push(tituloOriginal);
   }
+  log('buscarSerie: queries=' + JSON.stringify(queries) + ' sNum=' + sNum + ' eNum=' + eNum);
 
   const cookieState = { cookie: '' };
   const sources = [];
   const magnetsVistos = {};
 
   function processCard(card) {
+    log('processCard (serie): abrindo ' + card.url);
     return fetchPagina(card.url, cookieState).then(function (html) {
-      if (!html) return;
+      if (!html) { log('processCard (serie): html vazio/nulo'); return; }
 
       const tituloPaginaLower = getTituloLimpo(html).toLowerCase();
+      log('processCard (serie): tituloPagina="' + tituloPaginaLower + '"');
 
-      // CASO A: episódios separados
       const epDiv = getEpisodiosDiv(html);
+      log('processCard (serie): epDiv encontrado? ' + !!epDiv);
+
       if (epDiv) {
-        if (!temporadaOk(tituloPaginaLower, sNum)) return;
+        const tOk = temporadaOk(tituloPaginaLower, sNum);
+        log('processCard (serie) Caso A: temporadaOk(' + sNum + ')=' + tOk);
+        if (!tOk) return;
 
         const tituloLimpo = getTituloLimpo(html) || titulo;
-        if (!tituloCompativel(tituloLimpo, titulo)) return;
+        const compat = tituloCompativel(tituloLimpo, titulo);
+        log('processCard (serie) Caso A: tituloCompativel("' + tituloLimpo + '", "' + titulo + '")=' + compat);
+        if (!compat) return;
 
         const secoes = splitByH3Sections(epDiv);
-        // Fallback: se não achou nenhuma seção com h3 (formato sem divisão
-        // de idioma), trata a div inteira como uma seção só.
+        log('processCard (serie) Caso A: ' + secoes.length + ' secao(oes) h3 encontrada(s)');
         const listaSecoes = secoes.length ? secoes : [{ label: '', content: epDiv }];
 
         listaSecoes.forEach(function (secao) {
           if (sources.length >= MAX_RESULTS) return;
           const idiomaSecao = idiomaDoTexto(secao.label);
           const paragrafos = getPBlocksWithStrong(secao.content);
+          log('processCard (serie) Caso A: secao="' + secao.label + '" -> ' + paragrafos.length + ' paragrafo(s) com <strong>');
 
           for (let i = 0; i < paragrafos.length; i++) {
             if (sources.length >= MAX_RESULTS) break;
@@ -546,6 +527,7 @@ function buscarSerie(itemData, season, episode) {
             }
             if (!encontrado) continue;
 
+            log('processCard (serie) Caso A: paragrafo do episodio encontrado: "' + epText + '"');
             const links = getDataULinks(paragrafos[i]);
             links.forEach(function (link) {
               if (sources.length >= MAX_RESULTS) return;
@@ -553,8 +535,6 @@ function buscarSerie(itemData, season, episode) {
               if (!magnet || magnet.indexOf('magnet:') === -1) return;
               if (magnetsVistos[magnet]) return;
               magnetsVistos[magnet] = true;
-              // Nesse formato a qualidade vem no próprio texto do link
-              // (ex: "1080p"); não existe tamanho disponível aqui.
               const mQ = link.text.match(/(4K|2160p|1080p|720p|480p)/i);
               const qEp = mQ ? mQ[1] : 'HD';
               sources.push({
@@ -565,14 +545,16 @@ function buscarSerie(itemData, season, episode) {
                 languages: idiomaSecao,
               });
             });
-            break; // já achou o parágrafo do episódio certo NESSA seção
+            break;
           }
         });
         return;
       }
 
-      // CASO B: temporada inteira em bloco btn-down
-      if (!temporadaOk(tituloPaginaLower, sNum)) return;
+      // CASO B
+      const tOkB = temporadaOk(tituloPaginaLower, sNum);
+      log('processCard (serie) Caso B: temporadaOk(' + sNum + ')=' + tOkB);
+      if (!tOkB) return;
 
       const tituloLimpo = getTituloLimpo(html) || titulo;
       const qualidade = getQualidade(html);
@@ -581,6 +563,7 @@ function buscarSerie(itemData, season, episode) {
       const searchArea = contentStart !== -1 ? html.slice(contentStart) : html;
       const areaConteudo = cortarAntesDeSecoesIrrelevantes(searchArea);
       const links = getDataULinksWithContext(areaConteudo);
+      log('processCard (serie) Caso B: ' + links.length + ' link(s) data-u encontrado(s)');
 
       links.forEach(function (link) {
         if (sources.length >= MAX_RESULTS) return;
@@ -602,6 +585,7 @@ function buscarSerie(itemData, season, episode) {
   function processQuery(query) {
     if (sources.length >= MAX_RESULTS) return Promise.resolve();
     return buscarPaginas(query, titulo, 8, cookieState).then(function (paginas) {
+      log('buscarSerie: query="' + query + '" -> ' + paginas.length + ' pagina(s) candidata(s)');
       return paginas.reduce(function (p, card) {
         return p.then(function () {
           if (sources.length >= MAX_RESULTS) return Promise.resolve();
@@ -623,8 +607,6 @@ function buscarSerie(itemData, season, episode) {
 // Entry point
 // ---------------------------------------------------------------------------
 
-// Alguns títulos chegam com ID do IMDb (formato "tt1234567") em vez do ID
-// numérico da TMDB — converte via /find antes de buscar os detalhes.
 function resolveTmdbId(id, isMovie) {
   const idStr = String(id);
   if (idStr.indexOf('tt') !== 0) return Promise.resolve(idStr);
@@ -653,7 +635,7 @@ function fetchTmdbDetails(tmdbId, isMovie) {
   });
 }
 
-function mapToStreamObjects(sources, extraTitleSuffix) {
+function mapToStreamObjects(sources) {
   return sources.map(function (s) {
     const sizeInfo = (s.size && s.size !== 'N/A') ? ('\n💾 ' + s.size) : '';
     return {
