@@ -1,0 +1,30 @@
+name: Testar StarckFilmes Serie
+
+on:
+  workflow_dispatch:
+    inputs:
+      tmdb_id:
+        description: 'TMDB ID da série'
+        required: false
+        default: '1396'
+      season:
+        description: 'Temporada'
+        required: false
+        default: '1'
+      episode:
+        description: 'Episódio'
+        required: false
+        default: '1'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Rodar teste de serie do StarckFilmes
+        run: node test-serie-starck.js ${{ github.event.inputs.tmdb_id }} ${{ github.event.inputs.season }} ${{ github.event.inputs.episode }}
