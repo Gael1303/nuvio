@@ -1,6 +1,6 @@
 // Testa série no StarckFilmes. Roda com: node test-serie-starck.js <tmdbId> <season> <episode>
 // Exemplo: node test-serie-starck.js 1396 1 1  (Breaking Bad S1E1)
-const { getStreams } = require('.providers/starckfilmes-movies.js');
+const { getStreams } = require('./providers/starckfilmes-movies.js');
 
 const tmdbId = process.argv[2] || '1396';
 const season = parseInt(process.argv[3] || '1', 10);
