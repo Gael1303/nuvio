@@ -10,7 +10,7 @@ const log = function () {
 };
 
 const BASE_URL = 'https://starckfilmes-v29.com';
-const MAX_RESULTS = 6;
+const MAX_RESULTS = 3;
 const USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -181,6 +181,15 @@ function parseMagnetInfo(magnet) {
   return { dn: dn, size: xlM ? formatSize(xlM[1]) : 'N/A' };
 }
 
+// Último ano de 4 dígitos no nome do torrent (o ano de lançamento costuma vir
+// depois do título; evita confundir com títulos como "2001: Uma Odisseia").
+function anoDoNomeTorrent(dn) {
+  const all = String(dn || '').match(/(?:^|[^0-9])((?:19|20)\d{2})(?![0-9])/g);
+  if (!all || !all.length) return null;
+  const last = all[all.length - 1].match(/((?:19|20)\d{2})/);
+  return last ? parseInt(last[1], 10) : null;
+}
+
 function criarFonteDoMagnet(magnet, titulo, qualidadePagina, tamanhoPagina, textoExtra) {
   const info = parseMagnetInfo(magnet);
   const contexto = info.dn + ' ' + (textoExtra || '');
@@ -252,8 +261,28 @@ function getTituloLimpo(html) {
   return '';
 }
 
+const HTML_ENTITIES = {
+  nbsp: ' ', quot: '"', apos: "'", lt: '<', gt: '>',
+  ordf: 'ª', ordm: 'º', ccedil: 'ç', Ccedil: 'Ç',
+  aacute: 'á', eacute: 'é', iacute: 'í', oacute: 'ó', uacute: 'ú',
+  Aacute: 'Á', Eacute: 'É', Iacute: 'Í', Oacute: 'Ó', Uacute: 'Ú',
+  agrave: 'à', Agrave: 'À', acirc: 'â', ecirc: 'ê', ocirc: 'ô',
+  Acirc: 'Â', Ecirc: 'Ê', Ocirc: 'Ô', atilde: 'ã', otilde: 'õ',
+  Atilde: 'Ã', Otilde: 'Õ', uuml: 'ü', ntilde: 'ñ',
+};
+
+function decodeEntities(text) {
+  return String(text)
+    .replace(/&#x([0-9a-f]+);/gi, function (_, h) { return String.fromCharCode(parseInt(h, 16)); })
+    .replace(/&#(\d+);/g, function (_, d) { return String.fromCharCode(parseInt(d, 10)); })
+    .replace(/&([a-zA-Z]+);/g, function (all, name) {
+      return Object.prototype.hasOwnProperty.call(HTML_ENTITIES, name) ? HTML_ENTITIES[name] : all;
+    })
+    .replace(/&amp;/g, '&');
+}
+
 function stripTags(html) {
-  return html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]+>/g, '')).trim();
 }
 
 function getQualidade(html) {
@@ -532,6 +561,10 @@ function buscarFilme(itemData) {
   const magnetsVistos = {};
 
   function processCard(card) {
+    if (/temporada|\bs\d{1,2}e\d{1,2}\b/i.test((card.titulo || '') + ' ' + (card.url || ''))) {
+      log('processCard (filme): ignorado (parece serie): ' + card.url);
+      return Promise.resolve();
+    }
     return fetchPagina(card.url, cookieState).then(function (html) {
       if (!html) return;
       log('processCard (filme): ' + card.url + ' html=' + html.length + ' chars, data-u=' + (html.match(/data-u=/g) || []).length + ', post-title=' + (html.match(/post-title/g) || []).length);
@@ -551,6 +584,17 @@ function buscarFilme(itemData) {
       links.forEach(function (link) {
         if (sources.length >= MAX_RESULTS) return;
         if (magnetsVistos[link.magnet]) return;
+        const dnTorrent = parseMagnetInfo(link.magnet).dn;
+        if (/\bs\d{1,2}e\d{1,2}\b/i.test(dnTorrent)) {
+          log('ignorado (episodio de serie): ' + dnTorrent);
+          return;
+        }
+        const anoTorrent = anoDoNomeTorrent(dnTorrent);
+        const anoEsp = parseInt(ano, 10);
+        if (anoTorrent && Number.isFinite(anoEsp) && Math.abs(anoTorrent - anoEsp) > 1) {
+          log('ignorado por ano: torrent=' + anoTorrent + ' esperado=' + anoEsp + ' (' + tituloLimpo + ')');
+          return;
+        }
         magnetsVistos[link.magnet] = true;
         sources.push(criarFonteDoMagnet(link.magnet, tituloLimpo, qualidade, tamanho, link.text));
       });
